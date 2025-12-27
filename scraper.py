@@ -2,6 +2,7 @@ import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from typing import List, Optional, Tuple
+from datetime import datetime, timezone
 from models import Link, Section
 
 
@@ -68,8 +69,13 @@ def extract_sections(soup: BeautifulSoup, base_url: str) -> List[Section]:
     for tag_name in landmark_tags:
         elements = soup.find_all(tag_name)
         for element in elements:
-            # Extract text content
+            # Extract text content and strip extra whitespace
             content = element.get_text(separator=" ", strip=True)
+            # Remove extra whitespace (multiple spaces, tabs, newlines)
+            content = " ".join(content.split())
+            # Limit to 2,000 characters
+            if len(content) > 2000:
+                content = content[:2000]
             
             # Extract links
             links = extract_links(element, base_url)
@@ -85,15 +91,21 @@ def extract_sections(soup: BeautifulSoup, base_url: str) -> List[Section]:
     return sections
 
 
-def truncate_html(html: str, max_length: int = 5000) -> str:
-    """Truncate HTML to specified length."""
-    if len(html) <= max_length:
-        return html
-    return html[:max_length] + "..."
+def truncate_html(html: str, max_length: int = 10000) -> dict:
+    """Truncate HTML to specified length and return with truncated flag."""
+    truncated = len(html) > max_length
+    html_content = html[:max_length] if truncated else html
+    return {
+        "html": html_content,
+        "truncated": truncated
+    }
 
 
 async def scrape_url(url: str) -> dict:
     """Main scraping function that coordinates all extraction."""
+    # Capture timestamp
+    scraped_at = datetime.now(timezone.utc).isoformat()
+    
     # Fetch the page
     html_content, final_url = await fetch_page(url)
     
@@ -109,12 +121,23 @@ async def scrape_url(url: str) -> dict:
     # Truncate raw HTML
     raw_html = truncate_html(html_content)
     
+    # Create interactions object (placeholder for static scraping)
+    interactions = {
+        "clicks": [],
+        "scrolls": 0,
+        "pages": [final_url]
+    }
+    
     return {
         "url": final_url,
-        "title": metadata["title"],
-        "description": metadata["description"],
-        "language": metadata["language"],
-        "canonicalUrl": metadata["canonicalUrl"],
+        "scrapedAt": scraped_at,
+        "meta": {
+            "title": metadata["title"],
+            "description": metadata["description"],
+            "language": metadata["language"],
+            "canonicalUrl": metadata["canonicalUrl"]
+        },
+        "rawHtml": raw_html,
         "sections": sections,
-        "rawHtml": raw_html
+        "interactions": interactions
     }
